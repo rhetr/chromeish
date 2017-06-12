@@ -1,12 +1,12 @@
-TODO:
-
-### basic
-- communicate w client probably via REST...should i use node UGH
-
 ### functions
 - GET /chromeish/tabs
 	list open tabs
 	`chromeish ls`
+	`chromeish ls t` title
+	`chromeish ls u` url
+	`chromeish ls i` id
+	`chromeish ls a/tui` all
+
 - GET /chromeish/tabs/url_id
 	get tab ids from url (tab separated)
 	`chromeish url <url>`
