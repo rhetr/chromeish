@@ -13,6 +13,9 @@ TODO:
 - GET /chromeish/tabs/title_id
 	get tab id from title
 	`chromeish title <title>`
+- GET /chromeish/tabs/id
+	get title and window from id
+	`chromeish id <id>`
 - GET /chromeish/windows
     	list open windows
 	this doesn't make sense actually

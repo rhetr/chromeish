@@ -5,6 +5,7 @@
 import json
 import struct
 import sys
+import os
 import threading
 from Queue import Queue
 # from queue import Queue # python3
@@ -22,8 +23,8 @@ def send_message(message):
   sys.stdout.write(message)
   sys.stdout.flush()
 
-# Thread that reads messages from the webapp.
-def read_thread_func(queue):
+def native_func(queue):
+  ''' read messages from chrome via Native Messaging '''
   while True:
     # queue.put(input())
     # text_length_bytes = sys.stdin.buffer.read(4) # python3
@@ -56,13 +57,10 @@ class MainWindow(Gtk.Window):
 
     self.connect('destroy', Gtk.main_quit)
 
-    # self.set_border_width(2)
     self.set_size_request(500, 200) 
-    # self.set_resizable(False)
     self.set_keep_above(True)
     self.stick()
     self.set_position(1)
-    # self.set_decorated(False)
 
     # from chrome
     self.from_chrome_label = Gtk.Label("from chrome")
@@ -111,79 +109,128 @@ class MainWindow(Gtk.Window):
     while not self.server_queue.empty():
       message = self.server_queue.get_nowait()
       if message == None: return True
-      self.log("Received {}".format(message))
-      self.from_chrome_text.append(message)
+      self.log("client: Received {}".format(message))
+      self.from_client_text.append(json.dumps(message))
       self.send(message)
-
+      # self.log("ugh {}".format(message))
+      # self.sendResult(message)
     return True
 
   def pollChromeMessages(self):
     #self.log("polling")
     while not self.native_queue.empty():
       message = self.native_queue.get_nowait()
+      # message = json.loads(message)
       if message == None: return True
-      self.log("Received {}".format(message))
+      self.log("chrome: Received {}".format(message))
       self.from_chrome_text.append(message)
+      # self.log("ugh {}".format(message))
+      self.sendResult(json.loads(message))
     return True
 
   def sendResult(self, result):
+    self.log("client: Sending {}".format(result))
     self.client_queue.put(result)
 
   def send(self, message):
     # message = '{{"text": "{}"}}'.format(text)
     message = json.dumps(message)
-    self.log("Sending {}".format(message))
+    self.log("chrome: Sending {}".format(message))
     self.to_chrome_text.append(message)
     try:
       send_message(message)
     except IOError:
-      errordialog = Gtk.MessageDialog(
-          self, 
-          0,
-          Gtk.MessageType.INFO,
-          Gtk.ButtonsType.OK,
-          "This is an INFO MessageDialog"
-          )
-      errordialog.run()
-      errordialog.destroy()
+      self.sendResult({'err': 1, 'addr': message['addr'] })
+      # errordialog = Gtk.MessageDialog(
+      #     self, 
+      #     0,
+      #     Gtk.MessageType.INFO,
+      #     Gtk.ButtonsType.OK,
+      #     "chrome not connected"
+      #     )
+      # errordialog.run()
+      # errordialog.destroy()
 
   def log(self, message):
     self.log_text.append(message)
     # print(message)
 
+def getbuf(sock):
+  try: 
+    msg = sock.recv(4096).decode()
+    return msg
+  # except BlockingIOError: # python3
+  except socket.error:
+    return None
 
+def serve_func(server_queue, client_queue):
+  ''' terrible design '''
+  server = socket.socket(socket.AF_UNIX)
+  if os.path.exists('/tmp/shrome'):
+    os.remove("/tmp/shrome")
+  server.bind("/tmp/shrome")
+  # server.settimeout(0)
+  server.listen(5)
+  connections = []
+  tosend = []
+  while True:
+    # send and receive data
+    for sock, addr in connections:
 
-def serve(server_queue, client_queue):
-    pass
-  # fuck it i'll think more abt the architecture instead of just randomly doing shit
-  # server = socket.socket(socket.AF_UNIX)
-  # server.bind("/tmp/shrome")
-  # server.listen()
-  # connections = []
-  # while True:
-  #   for sock, addr in connections:
-  #     # receive data
-  #     try: 
-  #       msg, addr = sock.recvfrom(4096).decode()
-  #     except BlockingIOError:
-  #       continue
-  #     while not "END" in msg:
-  #       text, addr = sock.recvfrom(4096).decode()
-  #       msg += text
-  #     server_queue.put({"text": msg, "addr": addr}))
+      # receive
+      msg = ''
+      sys.stderr.write("getin res\n")
+      msg = getbuf(sock)
+      if msg == b'':
+        sys.stderr.write("sock closed\n")
+        connections.remove((sock, addr))
+        break
+      else:
+        sys.stderr.write("msg: {}\n".format(msg))
+        server_queue.put({"text": msg, "addr": addr})
 
-  #   while not client_queue.empty():
-  #     data = client_queue.get_nowait()
-  #     if data == None: break
-  #     result, addr = data
+      # check queue
+      sys.stderr.write("waiting\n")
+      data = client_queue.get()
+      sys.stderr.write("done waiting\n")
+      if data == None: break
+      tosend.append(data)
 
-  #   sock, addr = server.accept()
-  #   sock.settimeout(0)
-  #   
-  #   # send data
-  # server.close()
-  # os.remove("/tmp/shrome")
+      # send data
+      for data in tosend:
+        if 'text' in data:
+          msg = data['text']
+        elif 'err' in data:
+          msg = data['err']
+        send_addr = data['addr']
+        sys.stderr.write("addr: {}\n".format(addr))
+        sys.stderr.write("send_addr: {}\n".format(send_addr))
+
+        if send_addr == addr:
+          sys.stderr.write("data: {}\n".format(data))
+          try: sock.sendall(msg)
+          except: pass
+          tosend.remove(data)
+
+      msg = getbuf(sock)
+      if msg == b'':
+        sys.stderr.write("sock closed\n")
+        connections.remove((sock, addr))
+        break
+
+    # check for new connections
+    try:
+      sock, addr = server.accept()
+      # sock.settimeout(0)
+      sys.stderr.write("new client {}\n".format(addr))
+      connections.append((sock, addr))
+    # except BlockingIOError # python3
+    except socket.error:
+      pass
+
     
+  server.close()
+  os.remove("/tmp/shrome")
 
 
 def main():
@@ -191,16 +238,16 @@ def main():
   server_queue = Queue()
   client_queue = Queue()
 
-  native_thread = threading.Thread(target=read_thread_func, args=(native_queue,))
+  native_thread = threading.Thread(target=native_func, args=(native_queue,))
   native_thread.daemon = True
   native_thread.start()
 
-  server_thread = threading.Thread(target=serve, args=(server_queue, client_queue))
+  server_thread = threading.Thread(target=serve_func, args=(server_queue, client_queue))
   server_thread.daemon = True
   server_thread.start()
 
   main_window = MainWindow(native_queue, server_queue, client_queue)
-  main_window.show_all()
+  # main_window.show_all()
   Gtk.main()
   sys.exit(0)
 

@@ -7,7 +7,7 @@ import os
 import random
 import string
 
-cmds = ["ls", "open", "cat", "close", "url", "title"]
+cmds = ["ping", "echo", "ls", "open", "cat", "close", "url", "title"]
 
 def setup_socket():
     client = socket.socket(socket.AF_UNIX)
@@ -20,18 +20,29 @@ def setup_socket():
             continue
         break
 
-    client.connect("/tmp/shrome")
+    # client.connect("/tmp/shrome")
+    try: client.connect("/tmp/shrome")
+    except (ConnectionRefusedError, FileNotFoundError):
+        print("shrome not running", file=sys.stderr)
+        sys.exit()
     return client, path
+
+def formatJSON(arg_list):
+    '''
+    convert commandline args to JSON; shrome should add addr to JSON object afterwards
+    '''
+    # cmd = arg_list[0]
+    return ' '.join(arg_list).encode()
+
 
 def run():
     client, path = setup_socket()
-    client.send(' '.join(sys.argv[1:]).encode())
-    client.send(b'END')
+    # cmd_json = format(sys.argv[1:])
+
+    # client.sendall(cmd_json)
+    client.sendall(' '.join(sys.argv[1:]).encode())
+
     result = client.recvfrom(4096)[0].decode()
-    while not 'END' in result:
-        extra = client.recvfrom(4096)[0].decode()
-        print(extra)
-        result += extra
     print(result)
 
     client.close()
