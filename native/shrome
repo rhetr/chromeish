@@ -1,0 +1,208 @@
+#!/usr/bin/env python
+# can't use python3 due to
+# http://bugs.python.org/issue26037
+
+import json
+import struct
+import sys
+import threading
+from Queue import Queue
+# from queue import Queue # python3
+
+import gi
+gi.require_version('Gtk','3.0')
+from gi.repository import Gtk
+from gi.repository import GObject
+
+import socket
+
+def send_message(message):
+  # sys.stdout.buffer.write(struct.pack('I', len(message))) # python3
+  sys.stdout.write(struct.pack('I', len(message)))
+  sys.stdout.write(message)
+  sys.stdout.flush()
+
+# Thread that reads messages from the webapp.
+def read_thread_func(queue):
+  while True:
+    # queue.put(input())
+    # text_length_bytes = sys.stdin.buffer.read(4) # python3
+    text_length_bytes = sys.stdin.read(4)
+    if len(text_length_bytes) == 0:
+      if queue: queue.put(None)
+      sys.exit(0)
+    text_length = struct.unpack('i', text_length_bytes)[0]
+    # text = sys.stdin.buffer.read(text_length).decode('utf-8') # python3
+    text = sys.stdin.read(text_length).decode('utf-8')
+    queue.put(text)
+
+class cview(Gtk.TextView):
+  def __init__(self):
+    super(Gtk.TextView, self).__init__()
+    self.set_editable(False)
+    self.set_cursor_visible(False)
+
+  def append(self, text):
+    buf = self.get_buffer()
+    buf.insert_at_cursor(text + "\n")
+    # buf.set_text('\n'.join(buf.get_text(), text))
+
+class MainWindow(Gtk.Window):
+  def __init__(self, native_queue, server_queue, client_queue):
+    super(Gtk.Window, self).__init__()
+    self.native_queue = native_queue
+    self.server_queue = server_queue
+    self.client_queue = client_queue
+
+    self.connect('destroy', Gtk.main_quit)
+
+    # self.set_border_width(2)
+    self.set_size_request(500, 200) 
+    # self.set_resizable(False)
+    self.set_keep_above(True)
+    self.stick()
+    self.set_position(1)
+    # self.set_decorated(False)
+
+    # from chrome
+    self.from_chrome_label = Gtk.Label("from chrome")
+    self.from_chrome_text = cview()
+    # self.from_chrome_text.connect()
+
+    # to chrome
+    self.to_chrome_label = Gtk.Label("to chrome")
+    self.to_chrome_text = cview()
+
+    # received from client
+    self.from_client_label = Gtk.Label("from client")
+    self.from_client_text = cview()
+
+    # manual input
+    self.entry = Gtk.Entry()
+    self.button = Gtk.Button.new_with_label("send")
+
+    # log
+    self.log_label = Gtk.Label("log")
+    self.log_text = cview()
+
+    self.button.connect("clicked", lambda _: self.send({"text":self.entry.get_text()}))
+
+    self.pollServerMessages()
+    GObject.timeout_add(100, self.pollServerMessages)
+
+    self.pollChromeMessages()
+    GObject.timeout_add(100, self.pollChromeMessages)
+
+    box = Gtk.VBox()
+    box.pack_start(self.from_chrome_label, True, True, 0)
+    box.pack_start(self.from_chrome_text, True, True, 0)
+    box.pack_start(self.to_chrome_label, True, True, 0)
+    box.pack_start(self.to_chrome_text, True, True, 0)
+    box.pack_start(self.from_client_label, True, True, 0)
+    box.pack_start(self.from_client_text, True, True, 0)
+    box.pack_start(self.log_label, True, True, 0)
+    box.pack_start(self.log_text, True, True, 0)
+    box.pack_start(self.entry, True, True, 0)
+    box.pack_start(self.button, True, True, 0)
+
+    self.add(box)
+
+  def pollServerMessages(self):
+    while not self.server_queue.empty():
+      message = self.server_queue.get_nowait()
+      if message == None: return True
+      self.log("Received {}".format(message))
+      self.from_chrome_text.append(message)
+      self.send(message)
+
+    return True
+
+  def pollChromeMessages(self):
+    #self.log("polling")
+    while not self.native_queue.empty():
+      message = self.native_queue.get_nowait()
+      if message == None: return True
+      self.log("Received {}".format(message))
+      self.from_chrome_text.append(message)
+    return True
+
+  def sendResult(self, result):
+    self.client_queue.put(result)
+
+  def send(self, message):
+    # message = '{{"text": "{}"}}'.format(text)
+    message = json.dumps(message)
+    self.log("Sending {}".format(message))
+    self.to_chrome_text.append(message)
+    try:
+      send_message(message)
+    except IOError:
+      errordialog = Gtk.MessageDialog(
+          self, 
+          0,
+          Gtk.MessageType.INFO,
+          Gtk.ButtonsType.OK,
+          "This is an INFO MessageDialog"
+          )
+      errordialog.run()
+      errordialog.destroy()
+
+  def log(self, message):
+    self.log_text.append(message)
+    # print(message)
+
+
+
+def serve(server_queue, client_queue):
+    pass
+  # fuck it i'll think more abt the architecture instead of just randomly doing shit
+  # server = socket.socket(socket.AF_UNIX)
+  # server.bind("/tmp/shrome")
+  # server.listen()
+  # connections = []
+  # while True:
+  #   for sock, addr in connections:
+  #     # receive data
+  #     try: 
+  #       msg, addr = sock.recvfrom(4096).decode()
+  #     except BlockingIOError:
+  #       continue
+  #     while not "END" in msg:
+  #       text, addr = sock.recvfrom(4096).decode()
+  #       msg += text
+  #     server_queue.put({"text": msg, "addr": addr}))
+
+  #   while not client_queue.empty():
+  #     data = client_queue.get_nowait()
+  #     if data == None: break
+  #     result, addr = data
+
+  #   sock, addr = server.accept()
+  #   sock.settimeout(0)
+  #   
+  #   # send data
+  # server.close()
+  # os.remove("/tmp/shrome")
+    
+
+
+def main():
+  native_queue = Queue()
+  server_queue = Queue()
+  client_queue = Queue()
+
+  native_thread = threading.Thread(target=read_thread_func, args=(native_queue,))
+  native_thread.daemon = True
+  native_thread.start()
+
+  server_thread = threading.Thread(target=serve, args=(server_queue, client_queue))
+  server_thread.daemon = True
+  server_thread.start()
+
+  main_window = MainWindow(native_queue, server_queue, client_queue)
+  main_window.show_all()
+  Gtk.main()
+  sys.exit(0)
+
+if __name__ == '__main__':
+  main()

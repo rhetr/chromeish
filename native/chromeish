@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+# chromeish client
+
+import socket
+import sys
+import os
+import random
+import string
+
+cmds = ["ls", "open", "cat", "close", "url", "title"]
+
+def setup_socket():
+    client = socket.socket(socket.AF_UNIX)
+    while True:
+        try:
+            rand = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(10))
+            path = "/tmp/chromeish-{}".format(rand)
+            client.bind(path)
+        except OSError:
+            continue
+        break
+
+    client.connect("/tmp/shrome")
+    return client, path
+
+def run():
+    client, path = setup_socket()
+    client.send(' '.join(sys.argv[1:]).encode())
+    client.send(b'END')
+    result = client.recvfrom(4096)[0].decode()
+    while not 'END' in result:
+        extra = client.recvfrom(4096)[0].decode()
+        print(extra)
+        result += extra
+    print(result)
+
+    client.close()
+    os.remove(path)
+
+def main():
+    if len(sys.argv) < 2:
+        print("need arg")
+    elif sys.argv[1] not in cmds:
+        print("invalid command")
+    else:
+        run()
+
+if __name__ == "__main__":
+    main()

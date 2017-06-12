@@ -1,0 +1,9 @@
+{
+    "name": "com.rhetr.chromeish.shrome",
+    "description": "Shrome server",
+    "path": "/home/duke/projects/chromeish/native/shrome",
+    "type": "stdio",
+    "allowed_origins": [
+	"chrome-extension://liodlomcjlffaafbofgmampkfjgmdjph/"
+			]
+}
