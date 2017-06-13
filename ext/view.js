@@ -5,9 +5,8 @@ function appendMessage(text) {
     document.getElementById('response').innerHTML = message_log;
 }
 
-console.log("ello");
 chrome.runtime.onMessage.addListener(function(message, sender, response) {
-    appendMessage(message);
+    document.getElementById('response').innerHTML = message;
+    // appendMessage(message);
 });
-chrome.runtime.sendMessage(chrome.runtime.id, "test");
-console.log("sent message");
+chrome.runtime.sendMessage(chrome.runtime.id, "begin");

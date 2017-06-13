@@ -1,14 +1,21 @@
+var port = null;
+var message_log = '';
+
 chrome.browserAction.onClicked.addListener(function(activeTab){
     var URL = "chrome-extension://" + chrome.runtime.id + "/view.html";
     chrome.tabs.create({ url: URL });
 });
 
 chrome.runtime.onMessage.addListener(function(message, sender, response) {
-    chrome.runtime.sendMessage(chrome.runtime.id, "init view");
-});
+    if (message === "begin") {
+	console.log("begun");
+	chrome.runtime.sendMessage(chrome.runtime.id, message_log);
+    }
+    else {
+	console.log("no");
+    }
+})
 
-var port = null;
-var message_log = '';
 
 function nativeSend(message) {
     port.postMessage(message);
@@ -21,8 +28,9 @@ function onNativeMessage(message) {
 }
 
 function appendMessage(text) {
-    chrome.runtime.sendMessage(chrome.runtime.id, JSON.stringify(text))
     message_log += "<p>" + text + "</p>";
+    console.log(text);
+    chrome.runtime.sendMessage(chrome.runtime.id, message_log);
 }
 
 function nativePing(addr) {
@@ -55,7 +63,6 @@ function processMessage(message) {
 function onDisconnected() {
     appendMessage("Failed to connect: " + chrome.runtime.lastError.message);
     port = null;
-    updateUiState();
 }
 
 function connect() {
@@ -64,7 +71,6 @@ function connect() {
     port = chrome.runtime.connectNative(hostName);
     port.onMessage.addListener(onNativeMessage);
     port.onDisconnect.addListener(onDisconnected);
-    updateUiState();
 }
 
 function sendWindows(addr) {
