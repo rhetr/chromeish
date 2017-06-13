@@ -17,6 +17,10 @@ from gi.repository import GObject
 
 import socket
 
+def stderr(text):
+    out = '[{}] {}\n'.format(threading.currentThread().getName(), text)
+    sys.stderr.write(out)
+
 def send_message(message):
   # sys.stdout.buffer.write(struct.pack('I', len(message))) # python3
   sys.stdout.write(struct.pack('I', len(message)))
@@ -25,17 +29,25 @@ def send_message(message):
 
 def native_func(queue):
   ''' read messages from chrome via Native Messaging '''
+  stderr("init")
   while True:
     # queue.put(input())
     # text_length_bytes = sys.stdin.buffer.read(4) # python3
+
+    stderr("reading stdin")
     text_length_bytes = sys.stdin.read(4)
+    stderr("stdin read")
     if len(text_length_bytes) == 0:
       if queue: queue.put(None)
       sys.exit(0)
+    stderr("2")
     text_length = struct.unpack('i', text_length_bytes)[0]
+    stderr("3")
     # text = sys.stdin.buffer.read(text_length).decode('utf-8') # python3
     text = sys.stdin.read(text_length).decode('utf-8')
+    stderr("4")
     queue.put(text)
+    stderr("5")
 
 class cview(Gtk.TextView):
   def __init__(self):
@@ -107,6 +119,7 @@ class MainWindow(Gtk.Window):
 
   def pollServerMessages(self):
     while not self.server_queue.empty():
+      stderr("server queue triggered")
       message = self.server_queue.get_nowait()
       if message == None: return True
       self.log("client: Received {}".format(message))
@@ -119,9 +132,11 @@ class MainWindow(Gtk.Window):
   def pollChromeMessages(self):
     #self.log("polling")
     while not self.native_queue.empty():
+      stderr("native queue triggered")
       message = self.native_queue.get_nowait()
       # message = json.loads(message)
       if message == None: return True
+      message = message.encode("utf-8")
       self.log("chrome: Received {}".format(message))
       self.from_chrome_text.append(message)
       # self.log("ugh {}".format(message))
@@ -140,6 +155,7 @@ class MainWindow(Gtk.Window):
     try:
       send_message(message)
     except IOError:
+      stderr("oops")
       self.sendResult({'err': 1, 'addr': message['addr'] })
       # errordialog = Gtk.MessageDialog(
       #     self, 
@@ -152,7 +168,9 @@ class MainWindow(Gtk.Window):
       # errordialog.destroy()
 
   def log(self, message):
-    self.log_text.append(message)
+    # self.log_text.append(message)
+    stderr(message)
+    # sys.stderr.write("{}\n".format(message))
     # print(message)
 
 def getbuf(sock):
@@ -161,10 +179,12 @@ def getbuf(sock):
     return msg
   # except BlockingIOError: # python3
   except socket.error:
+    stder("oops")
     return None
 
 def serve_func(server_queue, client_queue):
   ''' terrible design '''
+  stderr("init")
   server = socket.socket(socket.AF_UNIX)
   if os.path.exists('/tmp/shrome'):
     os.remove("/tmp/shrome")
@@ -179,20 +199,20 @@ def serve_func(server_queue, client_queue):
 
       # receive
       msg = ''
-      sys.stderr.write("getin res\n")
+      stderr("getting res")
       msg = getbuf(sock)
       if msg == b'':
-        sys.stderr.write("sock closed\n")
+        stderr("sock closed")
         connections.remove((sock, addr))
         break
       else:
-        sys.stderr.write("msg: {}\n".format(msg))
+        stderr("msg: {}".format(msg))
         server_queue.put({"text": msg, "addr": addr})
 
       # check queue
-      sys.stderr.write("waiting\n")
+      stderr("waiting")
       data = client_queue.get()
-      sys.stderr.write("done waiting\n")
+      stderr("done waiting")
       if data == None: break
       tosend.append(data)
 
@@ -203,18 +223,20 @@ def serve_func(server_queue, client_queue):
         elif 'err' in data:
           msg = data['err']
         send_addr = data['addr']
-        sys.stderr.write("addr: {}\n".format(addr))
-        sys.stderr.write("send_addr: {}\n".format(send_addr))
+        stderr("addr: {}".format(addr))
+        stderr("send_addr: {}".format(send_addr))
 
         if send_addr == addr:
-          sys.stderr.write("data: {}\n".format(data))
-          try: sock.sendall(msg)
-          except: pass
+          stderr("data: {}".format(data))
+          try: sock.sendall(msg.encode('utf-8'))
+          except Exception as err:
+            stderr("send fail: {}".format(err))
+            pass
           tosend.remove(data)
 
       msg = getbuf(sock)
       if msg == b'':
-        sys.stderr.write("sock closed\n")
+        stderr("sock closed")
         connections.remove((sock, addr))
         break
 
@@ -222,7 +244,7 @@ def serve_func(server_queue, client_queue):
     try:
       sock, addr = server.accept()
       # sock.settimeout(0)
-      sys.stderr.write("new client {}\n".format(addr))
+      stderr("new client {}".format(addr))
       connections.append((sock, addr))
     # except BlockingIOError # python3
     except socket.error:
@@ -239,10 +261,12 @@ def main():
   client_queue = Queue()
 
   native_thread = threading.Thread(target=native_func, args=(native_queue,))
+  native_thread.setName("Native")
   native_thread.daemon = True
   native_thread.start()
 
   server_thread = threading.Thread(target=serve_func, args=(server_queue, client_queue))
+  server_thread.setName("Server")
   server_thread.daemon = True
   server_thread.start()
 
