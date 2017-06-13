@@ -1,194 +1,76 @@
-#!/usr/bin/env python
-# can't use python3 due to
-# http://bugs.python.org/issue26037
-
-import json
-import struct
-import sys
-import os
-import threading
-from Queue import Queue
-# from queue import Queue # python3
-
-from gi.repository import GObject
+#!/usr/bin/env python3
 
 import socket
+import sys
+import os
+import struct
 
-def stderr(text):
-    out = '[{}] {}\n'.format(threading.currentThread().getName(), text)
-    sys.stderr.write(out)
+def stderr(msg):
+    print(msg, file=sys.stderr)
+    sys.stderr.flush()
 
-def send_message(message):
-  # sys.stdout.buffer.write(struct.pack('I', len(message))) # python3
-  sys.stdout.write(struct.pack('I', len(message)))
-  sys.stdout.write(message)
-  sys.stdout.flush()
+def std_send(query):
+    sys.stdout.buffer.write(struct.pack('I', len(query))) # python3
+    sys.stdout.buffer.write(query)
+    sys.stdout.flush()
 
-def native_func(queue):
-  ''' read messages from chrome via Native Messaging '''
-  stderr("init")
-  while True:
-    # queue.put(input())
-    # text_length_bytes = sys.stdin.buffer.read(4) # python3
+def std_receive():
+    message_length_bytes = sys.stdin.buffer.read(4) # python3
+    if len(message_length_bytes) == 0:
+        sys.exit(0)
+    message_length = struct.unpack('i', message_length_bytes)[0]
+    message = sys.stdin.buffer.read(message_length)
+    return message
 
-    stderr("reading stdin")
-    text_length_bytes = sys.stdin.read(4)
-    stderr("stdin read")
-    if len(text_length_bytes) == 0:
-      if queue: queue.put(None)
-      sys.exit(0)
-    text_length = struct.unpack('i', text_length_bytes)[0]
-    # text = sys.stdin.buffer.read(text_length).decode('utf-8') # python3
-    text = sys.stdin.read(text_length).decode('utf-8')
-    queue.put(text)
-
-class Main(GObject.GObject):
-  def __init__(self, native_queue, server_queue, client_queue):
-    super(GObject.GObject, self).__init__()
-    self.run = GObject.MainLoop().run
-    self.native_queue = native_queue
-    self.server_queue = server_queue
-    self.client_queue = client_queue
-
-    self.pollServerMessages()
-    GObject.timeout_add(100, self.pollServerMessages)
-
-    self.pollChromeMessages()
-    GObject.timeout_add(100, self.pollChromeMessages)
-
-  def pollServerMessages(self):
-    while not self.server_queue.empty():
-      stderr("server queue triggered")
-      message = self.server_queue.get_nowait()
-      if message == None: return True
-      stderr("client: Received {}".format(message))
-      self.send(message)
-      # self.sendResult(message) # echo
-    return True
-
-  def pollChromeMessages(self):
-    while not self.native_queue.empty():
-      stderr("native queue triggered")
-      message = self.native_queue.get_nowait()
-      if message == None: return True
-      message = message.encode("utf-8")
-      stderr("chrome: Received {}".format(message))
-      self.sendResult(json.loads(message))
-    return True
-
-  def sendResult(self, result):
-    stderr("client: Sending {}".format(result))
-    self.client_queue.put(result)
-
-  def send(self, message):
-    message = json.dumps(message)
-    stderr("chrome: Sending {}".format(message))
+def socket_accept(server):
     try:
-      send_message(message)
-    except IOError:
-      stderr("oops")
-      self.sendResult({'err': 1, 'addr': message['addr'] })
+        sock, addr = server.accept()
+        stderr("new client {}".format(addr))
+        return sock
+    except BlockingIOError:
+        raise BlockingIOError
 
-def getbuf(sock):
-  try: 
-    msg = sock.recv(4096).decode()
-    return msg
-  # except BlockingIOError: # python3
-  except socket.error:
-    stder("oops")
-    return None
-
-def serve_func(server_queue, client_queue):
-  ''' terrible design '''
-  stderr("init")
-  server = socket.socket(socket.AF_UNIX)
-  if os.path.exists('/tmp/shrome'):
-    os.remove("/tmp/shrome")
-  server.bind("/tmp/shrome")
-  # server.settimeout(0)
-  server.listen(5)
-  connections = []
-  tosend = []
-  while True:
-    # send and receive data
-    for sock, addr in connections:
-
-      # receive
-      msg = ''
-      stderr("getting res")
-      msg = getbuf(sock)
-      if msg == b'':
-        stderr("sock closed")
-        connections.remove((sock, addr))
-        break
-      else:
-        stderr("msg: {}".format(msg))
-        server_queue.put({"text": msg, "addr": addr})
-
-      # check queue
-      stderr("waiting")
-      data = client_queue.get()
-      stderr("done waiting")
-      if data == None: break
-      tosend.append(data)
-
-      # send data
-      for data in tosend:
-        if 'text' in data:
-          msg = data['text']
-        elif 'err' in data:
-          msg = data['err']
-        send_addr = data['addr']
-        stderr("addr: {}".format(addr))
-        stderr("send_addr: {}".format(send_addr))
-
-        if send_addr == addr:
-          stderr("data: {}".format(data))
-          try: sock.sendall(msg.encode('utf-8'))
-          except Exception as err:
-            stderr("send fail: {}".format(err))
-            pass
-          tosend.remove(data)
-
-      msg = getbuf(sock)
-      if msg == b'':
-        stderr("sock closed")
-        connections.remove((sock, addr))
-        break
-
-    # check for new connections
+def socket_receive(sock):
     try:
-      sock, addr = server.accept()
-      # sock.settimeout(0)
-      stderr("new client {}".format(addr))
-      connections.append((sock, addr))
-    # except BlockingIOError # python3
-    except socket.error:
-      pass
+        message = sock.recv(4096)
+        return message
+    except BlockingIOError:
+        raise BlockingIOError
 
-    
-  server.close()
-  os.remove("/tmp/shrome")
-
+def socket_send(sock, message):
+    try:
+        sock.sendall(message)
+    except Exception as e:
+        raise e
 
 def main():
-  native_queue = Queue()
-  server_queue = Queue()
-  client_queue = Queue()
+    shrome_sock = '/tmp/shrome'
 
-  native_thread = threading.Thread(target=native_func, args=(native_queue,))
-  native_thread.setName("Native")
-  native_thread.daemon = True
-  native_thread.start()
+    stderr('======initializing shrome======')
+    server = socket.socket(socket.AF_UNIX)
+    if os.path.exists(shrome_sock):
+        os.remove(shrome_sock)
+    server.bind(shrome_sock)
+    server.listen()
+    stderr('server started')
 
-  server_thread = threading.Thread(target=serve_func, args=(server_queue, client_queue))
-  server_thread.setName("Server")
-  server_thread.daemon = True
-  server_thread.start()
+    while True:
+        stderr('waiting for sock...')
+        sock = socket_accept(server)
+        stderr("receiving query...")
+        query = socket_receive(sock)
+        stderr("query: {}".format(query))
+        while not query == b'':
+            stderr("sending query to chrome...")
+            std_send(query)
+            response = std_receive()
+            stderr("response: {}".format(response))
+            stderr("sending response to sock...")
+            socket_send(sock, response)
+            query = socket_receive(sock)
+        stderr("sock closed.")
+    server.close()
+    os.remove(shrome_sock)
 
-  main_obj = Main(native_queue, server_queue, client_queue)
-  main_obj.run()
-  sys.exit(0)
-
-if __name__ == '__main__':
-  main()
+if __name__ == "__main__":
+    main()

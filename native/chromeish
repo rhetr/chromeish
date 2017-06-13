@@ -6,6 +6,7 @@ import sys
 import os
 import random
 import string
+import json
 
 cmds = ["ping", "echo", "ls", "open", "cat", "close", "url", "title"]
 
@@ -27,22 +28,23 @@ def setup_socket():
     return client, path
 
 def formatJSON(arg_list):
-    '''
-    convert commandline args to JSON; shrome should add addr to JSON object afterwards
-    '''
-    # cmd = arg_list[0]
-    return ' '.join(arg_list).encode()
+    query = {
+            'text': ' '.join(arg_list)
+            }
+    json_query = json.dumps(query)
+    return json_query
 
 
 def run():
+    arglist = sys.argv[1:]
+    cmd_json = formatJSON(arglist)
+
     client, path = setup_socket()
-    # cmd_json = format(sys.argv[1:])
+    client.sendall(cmd_json.encode())
 
-    # client.sendall(cmd_json)
-    client.sendall(' '.join(sys.argv[1:]).encode())
-
-    result = client.recvfrom(4096)[0].decode()
-    print(result)
+    json_result = client.recvfrom(4096)[0].decode()
+    result = json.loads(json_result)
+    print(result['text'])
 
     client.close()
     os.remove(path)
