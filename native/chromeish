@@ -20,7 +20,6 @@ def setup_socket():
             continue
         break
 
-    # client.connect("/tmp/shrome")
     try: client.connect("/tmp/shrome")
     except (ConnectionRefusedError, FileNotFoundError):
         print("shrome not running", file=sys.stderr)
@@ -50,9 +49,9 @@ def run():
 
 def main():
     if len(sys.argv) < 2:
-        print("need arg")
+        print("need arg", file=sys.stderr)
     elif sys.argv[1] not in cmds:
-        print("invalid command")
+        print("invalid command", file=sys.stderr)
     else:
         run()
 
