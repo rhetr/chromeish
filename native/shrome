@@ -37,14 +37,10 @@ def native_func(queue):
     if len(text_length_bytes) == 0:
       if queue: queue.put(None)
       sys.exit(0)
-    stderr("2")
     text_length = struct.unpack('i', text_length_bytes)[0]
-    stderr("3")
     # text = sys.stdin.buffer.read(text_length).decode('utf-8') # python3
     text = sys.stdin.read(text_length).decode('utf-8')
-    stderr("4")
     queue.put(text)
-    stderr("5")
 
 class Main(GObject.GObject):
   def __init__(self, native_queue, server_queue, client_queue):
@@ -65,7 +61,7 @@ class Main(GObject.GObject):
       stderr("server queue triggered")
       message = self.server_queue.get_nowait()
       if message == None: return True
-      self.log("client: Received {}".format(message))
+      stderr("client: Received {}".format(message))
       self.send(message)
       # self.sendResult(message) # echo
     return True
@@ -76,25 +72,22 @@ class Main(GObject.GObject):
       message = self.native_queue.get_nowait()
       if message == None: return True
       message = message.encode("utf-8")
-      self.log("chrome: Received {}".format(message))
+      stderr("chrome: Received {}".format(message))
       self.sendResult(json.loads(message))
     return True
 
   def sendResult(self, result):
-    self.log("client: Sending {}".format(result))
+    stderr("client: Sending {}".format(result))
     self.client_queue.put(result)
 
   def send(self, message):
     message = json.dumps(message)
-    self.log("chrome: Sending {}".format(message))
+    stderr("chrome: Sending {}".format(message))
     try:
       send_message(message)
     except IOError:
       stderr("oops")
       self.sendResult({'err': 1, 'addr': message['addr'] })
-
-  def log(self, message):
-    stderr(message)
 
 def getbuf(sock):
   try: 
