@@ -10,9 +10,6 @@ import threading
 from Queue import Queue
 # from queue import Queue # python3
 
-import gi
-gi.require_version('Gtk','3.0')
-from gi.repository import Gtk
 from gi.repository import GObject
 
 import socket
@@ -49,53 +46,13 @@ def native_func(queue):
     queue.put(text)
     stderr("5")
 
-class cview(Gtk.TextView):
-  def __init__(self):
-    super(Gtk.TextView, self).__init__()
-    self.set_editable(False)
-    self.set_cursor_visible(False)
-
-  def append(self, text):
-    buf = self.get_buffer()
-    buf.insert_at_cursor(text + "\n")
-    # buf.set_text('\n'.join(buf.get_text(), text))
-
-class MainWindow(Gtk.Window):
+class Main(GObject.GObject):
   def __init__(self, native_queue, server_queue, client_queue):
-    super(Gtk.Window, self).__init__()
+    super(GObject.GObject, self).__init__()
+    self.run = GObject.MainLoop().run
     self.native_queue = native_queue
     self.server_queue = server_queue
     self.client_queue = client_queue
-
-    self.connect('destroy', Gtk.main_quit)
-
-    self.set_size_request(500, 200) 
-    self.set_keep_above(True)
-    self.stick()
-    self.set_position(1)
-
-    # from chrome
-    self.from_chrome_label = Gtk.Label("from chrome")
-    self.from_chrome_text = cview()
-    # self.from_chrome_text.connect()
-
-    # to chrome
-    self.to_chrome_label = Gtk.Label("to chrome")
-    self.to_chrome_text = cview()
-
-    # received from client
-    self.from_client_label = Gtk.Label("from client")
-    self.from_client_text = cview()
-
-    # manual input
-    self.entry = Gtk.Entry()
-    self.button = Gtk.Button.new_with_label("send")
-
-    # log
-    self.log_label = Gtk.Label("log")
-    self.log_text = cview()
-
-    self.button.connect("clicked", lambda _: self.send({"text":self.entry.get_text()}))
 
     self.pollServerMessages()
     GObject.timeout_add(100, self.pollServerMessages)
@@ -103,43 +60,23 @@ class MainWindow(Gtk.Window):
     self.pollChromeMessages()
     GObject.timeout_add(100, self.pollChromeMessages)
 
-    box = Gtk.VBox()
-    box.pack_start(self.from_chrome_label, True, True, 0)
-    box.pack_start(self.from_chrome_text, True, True, 0)
-    box.pack_start(self.to_chrome_label, True, True, 0)
-    box.pack_start(self.to_chrome_text, True, True, 0)
-    box.pack_start(self.from_client_label, True, True, 0)
-    box.pack_start(self.from_client_text, True, True, 0)
-    box.pack_start(self.log_label, True, True, 0)
-    box.pack_start(self.log_text, True, True, 0)
-    box.pack_start(self.entry, True, True, 0)
-    box.pack_start(self.button, True, True, 0)
-
-    self.add(box)
-
   def pollServerMessages(self):
     while not self.server_queue.empty():
       stderr("server queue triggered")
       message = self.server_queue.get_nowait()
       if message == None: return True
       self.log("client: Received {}".format(message))
-      self.from_client_text.append(json.dumps(message))
       self.send(message)
-      # self.log("ugh {}".format(message))
-      # self.sendResult(message)
+      # self.sendResult(message) # echo
     return True
 
   def pollChromeMessages(self):
-    #self.log("polling")
     while not self.native_queue.empty():
       stderr("native queue triggered")
       message = self.native_queue.get_nowait()
-      # message = json.loads(message)
       if message == None: return True
       message = message.encode("utf-8")
       self.log("chrome: Received {}".format(message))
-      self.from_chrome_text.append(message)
-      # self.log("ugh {}".format(message))
       self.sendResult(json.loads(message))
     return True
 
@@ -148,30 +85,16 @@ class MainWindow(Gtk.Window):
     self.client_queue.put(result)
 
   def send(self, message):
-    # message = '{{"text": "{}"}}'.format(text)
     message = json.dumps(message)
     self.log("chrome: Sending {}".format(message))
-    self.to_chrome_text.append(message)
     try:
       send_message(message)
     except IOError:
       stderr("oops")
       self.sendResult({'err': 1, 'addr': message['addr'] })
-      # errordialog = Gtk.MessageDialog(
-      #     self, 
-      #     0,
-      #     Gtk.MessageType.INFO,
-      #     Gtk.ButtonsType.OK,
-      #     "chrome not connected"
-      #     )
-      # errordialog.run()
-      # errordialog.destroy()
 
   def log(self, message):
-    # self.log_text.append(message)
     stderr(message)
-    # sys.stderr.write("{}\n".format(message))
-    # print(message)
 
 def getbuf(sock):
   try: 
@@ -270,9 +193,8 @@ def main():
   server_thread.daemon = True
   server_thread.start()
 
-  main_window = MainWindow(native_queue, server_queue, client_queue)
-  # main_window.show_all()
-  Gtk.main()
+  main_obj = Main(native_queue, server_queue, client_queue)
+  main_obj.run()
   sys.exit(0)
 
 if __name__ == '__main__':
