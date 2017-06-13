@@ -28,6 +28,7 @@ def setup_socket():
     return client, path
 
 def formatJSON(arg_list):
+    #TODO: advanced argparsing
     query = {
             'text': ' '.join(arg_list)
             }
