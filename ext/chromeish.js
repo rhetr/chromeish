@@ -17,63 +17,62 @@ chrome.runtime.onMessage.addListener(function(message, sender, response) {
 })
 
 
-function nativeSend(message) {
+function sendMessage(message) {
     port.postMessage(message);
-    appendMessage("Sent message: <b>" + JSON.stringify(message) + "</b>");
+    logMessage("Sent message: " + JSON.stringify(message));
 }
 
-function onNativeMessage(message) {
-    appendMessage("Received message: <b>" + JSON.stringify(message) + "</b>");
-    processMessage(message);
+function receiveMessage(message) {
+    logMessage("Received message: " + JSON.stringify(message));
+    processQuery(message);
 }
 
-function appendMessage(text) {
+function logMessage(text) {
     message_log += "<p>" + text + "</p>";
     console.log(text);
     chrome.runtime.sendMessage(chrome.runtime.id, message_log);
 }
 
-function nativePing(addr) {
-    nativeSend({text: 'ping', addr: addr});
+function ping() {
+    sendMessage({result: 'ping'});
 }
 
-function processMessage(message) {
-    // TODO: message should be an object of the form
-    // message {
-    //     cmd: string or enum
-    //     args: obj
-    // 	   addr: string
-    // }
-    switch(message.text) {
+function echo(message) {
+    var answer  = {
+	result: message.string.join(' ')
+    };
+    sendMessage(answer);
+}
+
+function processQuery(query) {
+    switch(query.cmd) {
 	case 'ping':
-	    nativePing(message.addr);
-	    break;
+	    ping(); break;
+	case 'echo':
+	    echo(query); break;
 	case 'cat':
-	    nativeSend(message);
-	    break;
+	    sendMessage(query); break;
 	case 'ls':
-	    sendWindows(message.addr);
-	    break;
+	    ls(query); break;
 	default:
-	    nativeSend(message);
-	    break;
+	    sendMessage(query); break;
     }
 }
 
 function onDisconnected() {
-    appendMessage("Failed to connect: " + chrome.runtime.lastError.message);
+    logMessage("Failed to connect: " + chrome.runtime.lastError.message);
     port = null;
 }
 
 function connect() {
     var hostName = "com.rhetr.chromeish.shrome";
-    appendMessage("Connecting to native messaging host <b>" + hostName + "</b>");
+    logMessage("Connecting to native messaging host " + hostName);
     port = chrome.runtime.connectNative(hostName);
-    port.onMessage.addListener(onNativeMessage);
+    port.onMessage.addListener(receiveMessage);
     port.onDisconnect.addListener(onDisconnected);
 }
 
-function sendWindows(addr) {
+function ls() {
     let winget = new Promise((resolve, reject) => {
 	chrome.windows.getAll({populate:true}, function(winData) {
 	    var tabs = [];
@@ -89,9 +88,8 @@ function sendWindows(addr) {
 	});
     });
     winget.then((tabs) => {
-	nativeSend({
-	    text: tabs.join('\n'),
-	    addr: addr
+	sendMessage({
+	    result: tabs.join('\n'),
 	});
     });
 }

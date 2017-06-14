@@ -7,8 +7,7 @@ import os
 import random
 import string
 import json
-
-cmds = ["ping", "echo", "ls", "open", "cat", "close", "url", "title"]
+import argparse
 
 def setup_socket():
     client = socket.socket(socket.AF_UNIX)
@@ -27,36 +26,49 @@ def setup_socket():
         sys.exit()
     return client, path
 
-def formatJSON(arg_list):
-    #TODO: advanced argparsing
-    query = {
-            'text': ' '.join(arg_list)
-            }
-    json_query = json.dumps(query)
-    return json_query
+def sysargs_json():
+    main_parser = argparse.ArgumentParser()
 
+    key_parser = argparse.ArgumentParser(add_help=False)
+    key_parser.add_argument('--key')
+    key_parser.add_argument('tabs')
+    key_parser.set_defaults(key='id')
 
-def run():
-    arglist = sys.argv[1:]
-    cmd_json = formatJSON(arglist)
+    subparsers = main_parser.add_subparsers(dest='cmd')
+
+    echo = subparsers.add_parser('echo')
+    echo.add_argument('string', nargs='*', default=[])
+    
+    ping = subparsers.add_parser('ping')
+
+    ls = subparsers.add_parser('list', aliases=['ls'])
+    ls.add_argument('--show', default='tuin', choices=list('tuinwdpasl'))
+    ls.add_argument('-l', '--list', action='store_const', const=True, default=False)
+    ls.add_argument('-s', '--settings', action='store_const', const=True, default=False)
+    ls.add_argument('-i', '--incognito', action='store_const', const=True, default=False)
+
+    info = subparsers.add_parser('info', aliases=['i'], parents=[key_parser])
+    cat = subparsers.add_parser('cat', parents=[key_parser])
+    remove = subparsers.add_parser('remove', aliases=['rm','close'], parents=[key_parser])
+    refresh = subparsers.add_parser('refresh', aliases=['reload, r'], parents=[key_parser])
+    disable = subparsers.add_parser('disable', aliases=['discard'], parents=[key_parser])
+
+    args = main_parser.parse_args()
+    return json.dumps(vars(args))
+
+def main():
+    args_json = sysargs_json()
 
     client, path = setup_socket()
-    client.sendall(cmd_json.encode())
+    client.sendall(args_json.encode())
 
     json_result = client.recvfrom(4096)[0].decode()
     result = json.loads(json_result)
-    print(result['text'])
+    print(result['result'])
 
     client.close()
     os.remove(path)
 
-def main():
-    if len(sys.argv) < 2:
-        print("need arg", file=sys.stderr)
-    elif sys.argv[1] not in cmds:
-        print("invalid command", file=sys.stderr)
-    else:
-        run()
 
 if __name__ == "__main__":
     main()
