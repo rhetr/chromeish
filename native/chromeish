@@ -28,13 +28,21 @@ def setup_socket():
 
 def sysargs_json():
     main_parser = argparse.ArgumentParser()
+    # main_parser.add_argument('cmd')
 
     key_parser = argparse.ArgumentParser(add_help=False)
-    key_parser.add_argument('--key')
-    key_parser.add_argument('tabs')
-    key_parser.set_defaults(key='id')
+    key_parser.add_argument('--key', default='id')
+    key_parser.add_argument('tabs', nargs='*')
+
+    window_parser = argparse.ArgumentParser(add_help=False)
+
+    #TODO: set proper defaults
+    window_parser.add_argument('--index', '-n', type=int, default=-1)
+    window_parser.add_argument('--window_parser', '-w', type=int, default=0) 
+    window_parser.add_argument('--new', '-N', action='store_const', const=True, default=False)
 
     subparsers = main_parser.add_subparsers(dest='cmd')
+    subparsers.required = True
 
     echo = subparsers.add_parser('echo')
     echo.add_argument('string', nargs='*', default=[])
@@ -52,6 +60,12 @@ def sysargs_json():
     remove = subparsers.add_parser('remove', aliases=['rm','close'], parents=[key_parser])
     refresh = subparsers.add_parser('refresh', aliases=['reload, r'], parents=[key_parser])
     disable = subparsers.add_parser('disable', aliases=['discard'], parents=[key_parser])
+
+    move = subparsers.add_parser('move', aliases=['mv'], parents=[key_parser, window_parser])
+
+    new = subparsers.add_parser('open')
+    new.add_argument('urls', nargs='*')
+
 
     args = main_parser.parse_args()
     return json.dumps(vars(args))
