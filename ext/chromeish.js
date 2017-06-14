@@ -44,18 +44,23 @@ function echo(message) {
     sendMessage(answer);
 }
 
+function echoCmd(message) {
+    var answer  = {
+	result: message.cmd
+    };
+    sendMessage(answer);
+}
+
 function processQuery(query) {
     switch(query.cmd) {
 	case 'ping':
 	    ping(); break;
 	case 'echo':
 	    echo(query); break;
-	case 'cat':
-	    sendMessage(query); break;
 	case 'ls':
 	    ls(query); break;
 	default:
-	    sendMessage(query); break;
+	    echoCmd(query); break;
     }
 }
 
