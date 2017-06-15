@@ -27,44 +27,44 @@ def setup_socket():
     return client, path
 
 def sysargs_json():
-    main_parser = argparse.ArgumentParser()
-    # main_parser.add_argument('cmd')
+    main_parser = argparse.ArgumentParser(description="~interact with Chrome via bash~")
 
     key_parser = argparse.ArgumentParser(add_help=False)
-    key_parser.add_argument('--key', default='id')
-    key_parser.add_argument('tabs', nargs='*')
+    key_parser.add_argument('--key', choices=["title","url","id"], default='id', help="the key used to reference the tab(s) (defaults to id)")
+    key_parser.add_argument('tabs', nargs='*', help="the tab(s) to be queried")
 
     window_parser = argparse.ArgumentParser(add_help=False)
 
     #TODO: set proper defaults
-    window_parser.add_argument('--index', '-n', type=int, default=-1)
-    window_parser.add_argument('--window_parser', '-w', type=int, default=0) 
-    window_parser.add_argument('--new', '-N', action='store_const', const=True, default=False)
+    window_parser.add_argument('--index', '-n', type=int, default=-1, help="tab index")
+    window_parser.add_argument('--window_parser', '-w', type=int, default=0, help="window id")
+    window_parser.add_argument('--new', '-N', action='store_const', const=True, default=False, help="open in a new window")
 
     subparsers = main_parser.add_subparsers(dest='cmd')
     subparsers.required = True
 
     echo = subparsers.add_parser('echo')
-    echo.add_argument('string', nargs='*', default=[])
+    echo.add_argument('string', nargs='*', default=[], help="the string to echo")
     
     ping = subparsers.add_parser('ping')
 
-    ls = subparsers.add_parser('list', aliases=['ls'])
-    ls.add_argument('--show', default='tuin', choices=list('tuinwdpasl'))
-    ls.add_argument('-l', '--list', action='store_const', const=True, default=False)
-    ls.add_argument('-s', '--settings', action='store_const', const=True, default=False)
-    ls.add_argument('-i', '--incognito', action='store_const', const=True, default=False)
+    ls = subparsers.add_parser('list', aliases=['ls'], description="list tabs")
+    ls.add_argument('--show', default='tuin', choices=list('tuinwdpasl'), help="fields: [t]itle, [u]rl, [i]d, i[n]dex, [w]indow id, [d]isabled, [p]inned, [a]udible, [s]tatus")
+    ls.add_argument('-l', '--list', action='store_const', const=True, default=False, help="show all fields")
+    ls.add_argument('-s', '--settings', action='store_const', const=True, default=False, help="include settings pages")
+    ls.add_argument('-i', '--incognito', action='store_const', const=True, default=False, help="include incognito pages")
 
-    info = subparsers.add_parser('info', aliases=['i'], parents=[key_parser])
-    cat = subparsers.add_parser('cat', parents=[key_parser])
-    remove = subparsers.add_parser('remove', aliases=['rm','close'], parents=[key_parser])
-    refresh = subparsers.add_parser('refresh', aliases=['reload, r'], parents=[key_parser])
-    disable = subparsers.add_parser('disable', aliases=['discard'], parents=[key_parser])
+    info = subparsers.add_parser('info', parents=[key_parser], description="get tab info")
+    focus = subparsers.add_parser('focus', parents=[key_parser], description="focus a tab")
+    cat = subparsers.add_parser('cat', parents=[key_parser], description="print the contents of a tab")
+    close = subparsers.add_parser('close', aliases=['rm'], parents=[key_parser], description="close a tab")
+    refresh = subparsers.add_parser('reload', parents=[key_parser], description="reload a tab")
+    disable = subparsers.add_parser('disable', parents=[key_parser], description="disable a tab")
 
-    move = subparsers.add_parser('move', aliases=['mv'], parents=[key_parser, window_parser])
+    move = subparsers.add_parser('move', aliases=['mv'], parents=[key_parser, window_parser], description="move a tab")
 
-    new = subparsers.add_parser('open')
-    new.add_argument('urls', nargs='*')
+    new = subparsers.add_parser('open', description="open a tab")
+    new.add_argument('urls', nargs='*', help="url(s) to open")
 
 
     args = main_parser.parse_args()
