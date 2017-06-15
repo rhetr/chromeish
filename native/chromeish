@@ -9,6 +9,9 @@ import string
 import json
 import argparse
 
+OK = 0
+ERR = 1 
+
 def setup_socket():
     client = socket.socket(socket.AF_UNIX)
     while True:
@@ -35,9 +38,8 @@ def sysargs_json():
 
     window_parser = argparse.ArgumentParser(add_help=False)
 
-    #TODO: set proper defaults
-    window_parser.add_argument('--index', '-n', type=int, default=-1, help="tab index")
-    window_parser.add_argument('--window_parser', '-w', type=int, default=0, help="window id")
+    window_parser.add_argument('--index', '-n', type=int, default=0, help="tab index")
+    window_parser.add_argument('--window_id', '-w', type=int, help="window id")
     window_parser.add_argument('--new', '-N', action='store_const', const=True, default=False, help="open in a new window")
 
     subparsers = main_parser.add_subparsers(dest='cmd')
@@ -63,11 +65,27 @@ def sysargs_json():
 
     move = subparsers.add_parser('move', aliases=['mv'], parents=[key_parser, window_parser], description="move a tab")
 
-    new = subparsers.add_parser('open', description="open a tab")
-    new.add_argument('urls', nargs='*', help="url(s) to open")
+    keyed = {
+            'info': info,
+            'focus': focus,
+            'cat': cat,
+            'close': close,
+            'rm': close,
+            'reload': refresh,
+            'disable': disable,
+            'move': move,
+            'mv': move
+            }
 
+    new = subparsers.add_parser('open', description="open a tab", parents=[window_parser])
+    new.add_argument('urls', nargs='*', help="url(s) to open")
+    new.add_argument('--incognito', '-i', action='store_const', const=True, default=False, help="open in incognito mode")
 
     args = main_parser.parse_args()
+    if args.cmd == 'open' and not args.urls:
+        new.error('URL(s) required')
+    elif args.cmd in keyed and not args.tabs:
+        keyed[args.cmd].error('tab(s) required')
     return json.dumps(vars(args))
 
 def main():
@@ -78,7 +96,15 @@ def main():
 
     json_result = client.recvfrom(4096)[0].decode()
     result = json.loads(json_result)
-    print(result['result'])
+    if result['status'] == OK:
+        if 'result' in result:
+            print(result['result'])
+        else:
+            print('done')
+    elif result['status'] == ERR:
+        print("Err: {}".format(result), file=sys.stderr)
+    else:
+        print("oops, something happened", file=sys.stderr)
 
     client.close()
     os.remove(path)
