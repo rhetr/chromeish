@@ -3,11 +3,11 @@
     `chromeish -h/--help`
 - list open tabs
     `chromeish ls` shows title (url)
-    `chromeish ls -s/--show [t|u|i|n|w|d|p|a|s|l]` show fields:
-	title | url | id | index | window id | discarded | pinned | audible (true/false/muted) | status (loading/complete) | show all (overrides everything else)
-    `chromeish ls -l/--list` shows `index. [id] title (url)`
+    `chromeish ls -s/--show [t|u|i|n|w|d|p|a|s]` show fields:
+	title | url | id | index | window id | discarded | pinned | audible (true/false/muted) | status (loading/complete)
+    `chromeish ls -l/--list` show all fields
     `chromeish ls -o/--omit-settings` omit settings pages (ie chrome://-prefixed pages)
-    `chromeish ls -w/--window` by window
+    `chromeish ls -w/--window` by window ???
     `chromeish ls -h/--hidden` include hidden
     `chromeish ls -W` list windows (also `chromeish wls`)
 
@@ -17,8 +17,8 @@
 - cat tab
     `chromeish cat -k [tab(s)]`
 
-- open new tab, kinda redundant
-    `chromeish open [url(s)]`
+- focus tab
+    `chromeish focus -k [tab(s)]`
 
 - close tab
     `chromeish rm -k [key] [tab(s)]`
@@ -36,5 +36,8 @@
 
 - discard/disable
     `chromeish disable -k [tab(s)]`
+
+- open new tab, kinda redundant
+    `chromeish open [url(s)]`
 
 * key?=(t,u,i) defaults to id
