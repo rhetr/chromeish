@@ -7,10 +7,16 @@ import os
 import random
 import string
 import json
-import argparse
+from argparse import ArgumentParser, HelpFormatter
+from operator import attrgetter
 
 OK = 0
 ERR = 1 
+
+class SortingHelpFormatter(HelpFormatter):
+    def add_arguments(self, actions):
+        actions = sorted(actions, key=attrgetter('option_strings'))
+        super().add_arguments(actions)
 
 def setup_socket():
     client = socket.socket(socket.AF_UNIX)
@@ -30,14 +36,14 @@ def setup_socket():
     return client, path
 
 def sysargs_json():
-    main_parser = argparse.ArgumentParser(description="~interact with Chrome via bash~")
+    main_parser = ArgumentParser(
+            formatter_class=SortingHelpFormatter,
+            description="~interact with Chrome via bash~")
 
-    key_parser = argparse.ArgumentParser(add_help=False)
+    key_parser = ArgumentParser(add_help=False)
     key_parser.add_argument('--key', choices=["title","url","id"], default='id', help="the key used to reference the tab(s) (defaults to id)")
     key_parser.add_argument('tabs', nargs='*', help="the tab(s) to be queried")
-
-    window_parser = argparse.ArgumentParser(add_help=False)
-
+    window_parser = ArgumentParser(add_help=False)
     window_parser.add_argument('--index', '-n', type=int, default=0, help="tab index")
     window_parser.add_argument('--window_id', '-w', type=int, help="window id")
     window_parser.add_argument('--new', '-N', action='store_const', const=True, default=False, help="open in a new window")
@@ -45,25 +51,25 @@ def sysargs_json():
     subparsers = main_parser.add_subparsers(dest='cmd')
     subparsers.required = True
 
-    echo = subparsers.add_parser('echo')
-    echo.add_argument('string', nargs='*', default=[], help="the string to echo")
-    
-    ping = subparsers.add_parser('ping')
+    cat = subparsers.add_parser('cat', parents=[key_parser], description="print the contents of a tab", formatter_class=SortingHelpFormatter)
+    close = subparsers.add_parser('close', parents=[key_parser], description="close a tab", formatter_class=SortingHelpFormatter)
+    disable = subparsers.add_parser('disable', parents=[key_parser], description="disable a tab", formatter_class=SortingHelpFormatter)
+    echo = subparsers.add_parser('echo', formatter_class=SortingHelpFormatter)
+    focus = subparsers.add_parser('focus', parents=[key_parser], description="focus a tab", formatter_class=SortingHelpFormatter)
+    info = subparsers.add_parser('info', parents=[key_parser], description="get tab info", formatter_class=SortingHelpFormatter)
+    ls = subparsers.add_parser('ls', description="list tabs", formatter_class=SortingHelpFormatter)
+    move = subparsers.add_parser('mv', parents=[key_parser, window_parser], description="move a tab", formatter_class=SortingHelpFormatter)
+    new = subparsers.add_parser('open', description="open a tab", parents=[window_parser], formatter_class=SortingHelpFormatter)
+    ping = subparsers.add_parser('ping', formatter_class=SortingHelpFormatter)
+    refresh = subparsers.add_parser('reload', parents=[key_parser], description="reload a tab", formatter_class=SortingHelpFormatter)
 
-    ls = subparsers.add_parser('list', aliases=['ls'], description="list tabs")
+    echo.add_argument('string', nargs='*', default=[], help="the string to echo")
     ls.add_argument('--show', default='tuin', choices=list('tuinwdpasl'), help="fields: [t]itle, [u]rl, [i]d, i[n]dex, [w]indow id, [d]isabled, [p]inned, [a]udible, [s]tatus")
     ls.add_argument('-l', '--list', action='store_const', const=True, default=False, help="show all fields")
     ls.add_argument('-s', '--settings', action='store_const', const=True, default=False, help="include settings pages")
     ls.add_argument('-i', '--incognito', action='store_const', const=True, default=False, help="include incognito pages")
-
-    info = subparsers.add_parser('info', parents=[key_parser], description="get tab info")
-    focus = subparsers.add_parser('focus', parents=[key_parser], description="focus a tab")
-    cat = subparsers.add_parser('cat', parents=[key_parser], description="print the contents of a tab")
-    close = subparsers.add_parser('close', aliases=['rm'], parents=[key_parser], description="close a tab")
-    refresh = subparsers.add_parser('reload', parents=[key_parser], description="reload a tab")
-    disable = subparsers.add_parser('disable', parents=[key_parser], description="disable a tab")
-
-    move = subparsers.add_parser('move', aliases=['mv'], parents=[key_parser, window_parser], description="move a tab")
+    new.add_argument('urls', nargs='*', help="url(s) to open")
+    new.add_argument('--incognito', '-i', action='store_const', const=True, default=False, help="open in incognito mode")
 
     keyed = {
             'info': info,
@@ -77,10 +83,9 @@ def sysargs_json():
             'mv': move
             }
 
-    new = subparsers.add_parser('open', description="open a tab", parents=[window_parser])
-    new.add_argument('urls', nargs='*', help="url(s) to open")
-    new.add_argument('--incognito', '-i', action='store_const', const=True, default=False, help="open in incognito mode")
-
+    # print(dir(main_parser._subparsers._registries.items))
+    # print(main_parser._subparsers._registries.items())
+    # sys.exit()
     args = main_parser.parse_args()
     if args.cmd == 'open' and not args.urls:
         new.error('URL(s) required')

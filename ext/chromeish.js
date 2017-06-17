@@ -45,7 +45,6 @@ function processQuery(query) {
 		ping(); break;
 	    case 'echo':
 		echo(query); break;
-	    case 'list':
 	    case 'ls':
 		ls(query); break;
 	    case 'open':
@@ -54,10 +53,8 @@ function processQuery(query) {
 	    case 'focus':
 	    case 'cat':
 	    case 'close':
-	    case 'rm':
 	    case 'reload':
 	    case 'disable':
-	    case 'move':
 	    case 'mv':
 	    default:
 		sendError(query);
