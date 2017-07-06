@@ -1,25 +1,54 @@
 #!/usr/bin/env python3
 
+import signal
+import atexit
 import socket
 import sys
 import os
 import struct
+import threading
+from queue import Queue
 
 def stderr(msg):
+    msg = "[shrome][{}][{}] {}".format(os.getpid(), threading.current_thread().name, msg)
     print(msg, file=sys.stderr)
     sys.stderr.flush()
+
+def exit(server, shrome_sock):
+    server.close()
+    if os.path.exists(shrome_sock):
+        os.remove(shrome_sock)
+    stderr('exiting shrome')
+
+
+def handler(server, shrome_sock, args):
+    stderr("caught signal {}".format(signal.Signals(args[0]).name))
+    sys.exit(0)
+
+def std_receive_thread(queue):
+    stderr('started')
+    while True:
+        message_length_bytes = sys.stdin.buffer.read(4) # python3
+        stderr('message read, len {}'.format(len(message_length_bytes)))
+        if len(message_length_bytes) == 0:
+            stderr('chrome closing')
+            break
+        else:
+            message_length = struct.unpack('i', message_length_bytes)[0]
+            message = sys.stdin.buffer.read(message_length)
+            queue.put(message)
+    stderr('sending SIGINT')
+    os.kill(os.getpid(), signal.SIGINT)
+    stderr('closing thread')
+    sys.exit(0)
 
 def std_send(query):
     sys.stdout.buffer.write(struct.pack('I', len(query))) # python3
     sys.stdout.buffer.write(query)
     sys.stdout.flush()
 
-def std_receive():
-    message_length_bytes = sys.stdin.buffer.read(4) # python3
-    if len(message_length_bytes) == 0:
-        sys.exit(0)
-    message_length = struct.unpack('i', message_length_bytes)[0]
-    message = sys.stdin.buffer.read(message_length)
+def std_receive(queue):
+    message = queue.get()
     return message
 
 def socket_accept(server):
@@ -46,7 +75,7 @@ def socket_send(sock, message):
 def main():
     shrome_sock = '/tmp/shrome'
 
-    stderr('======initializing shrome======')
+    stderr('======initializing======')
     server = socket.socket(socket.AF_UNIX)
     if os.path.exists(shrome_sock):
         os.remove(shrome_sock)
@@ -54,8 +83,17 @@ def main():
     server.listen()
     stderr('server started')
 
+    stdin_queue = Queue()
+    thread = threading.Thread(target=std_receive_thread, name="std_receive_thread", args=(stdin_queue,))
+    thread.daemon = True
+    thread.start()
+
+    atexit.register(exit, server, shrome_sock)
+    for sig in [signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT]:
+        signal.signal(sig, lambda *args: handler(server, shrome_sock, args))
+
     while True:
-        stderr('waiting for sock...')
+        stderr('waiting for connection...')
         sock = socket_accept(server)
         stderr("receiving query...")
         query = socket_receive(sock)
@@ -63,14 +101,13 @@ def main():
         while not query == b'':
             stderr("sending query to chrome...")
             std_send(query)
-            response = std_receive()
+            response = std_receive(stdin_queue)
             stderr("response: {}".format(response))
-            stderr("sending response to sock...")
+            stderr("sending response...")
             socket_send(sock, response)
             query = socket_receive(sock)
-        stderr("sock closed.")
-    server.close()
-    os.remove(shrome_sock)
+        stderr("connection closed.")
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()
