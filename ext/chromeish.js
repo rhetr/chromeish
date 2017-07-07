@@ -1,23 +1,27 @@
 var port = null;
 
-var OK = 0;
-var ERR = 1;
-
 function sendMessage(message) {
     port.postMessage(message);
     console.log("Sent message: " + JSON.stringify(message));
 }
 
-function sendSuccess(message) {
-    var result = message;
-    result.status = OK;
-    sendMessage(result);
+function sendSuccess(query, result) {
+    sendMessage({
+	query: query,
+	status: 'OK',
+	result: result
+    });
 }
 
-function sendError(message) {
-    var result = message;
-    result.status = ERR;
-    sendMessage(result);
+function sendError(query, error) {
+    sendMessage({
+	query: query,
+	status: 'ERR',
+	error: {
+	    name: error.name,
+	    message: error.message
+	}
+    });
 }
 
 function receiveMessage(message) {
@@ -51,39 +55,77 @@ function processQuery(query) {
 		createTab(query); break;
 	    case 'info':
 	    case 'focus':
+		focusTab(query); break;
 	    case 'cat':
 	    case 'close':
 	    case 'reload':
 	    case 'disable':
 	    case 'mv':
 	    default:
-		sendError(query);
-		break;
+		sendError(query); break;
 	}
     }
     catch(err) {
-	query.errname = err.name;
-	query.errmsg = err.message;
-	sendError(query);
+	sendError(query, err);
     }
 }
 
-function ping() {
-    sendSuccess({result: 'ping'});
+function focusTab(query) {
+    let get_id = new Promise((resolve, reject) => {
+	let tab_id;
+	if (['url','title'].indexOf(query.key) != -1) {
+	    let fields = {};
+	    fields[query.key] = query.tabs[0];
+	    chrome.tabs.query(fields, function(tabs) {
+		if (tabs.length > 0) {
+		    tab_id = tabs[0];
+		    resolve(tab_id);
+		}
+		else
+		    reject(new Error('invalid id'));
+	    });
+	}
+	else if (query.key === 'id') {
+	    tab_id = Number(query.tabs[0]);
+	    if (isNaN(tab_id))
+		reject(new Error('invalid id'));
+	    else {
+		chrome.tabs.get(tab_id, function(tab) {
+		    if (chrome.runtime.lastError)
+			reject(new Error('invalid id'));
+		    else
+			resolve(tab_id);
+		});
+	    }
+	}
+    });
+    get_id.then((tab_id) => {
+	chrome.tabs.update(tab_id, {active:true}, function(tab) {
+	    sendSuccess(query, {id: tab_id});
+	});
+    })
+    .catch((reason) => {
+	console.log(reason);
+	sendError(query, reason);
+    });
 }
 
-function echo(message) {
+function ping() {
+    sendSuccess({query:query, result: 'ping'});
+}
+
+function echo(query) {
     var answer = {
 	result: message.string.join(' ')
     };
-    sendSuccess(answer);
+    sendSuccess(query, answer);
 }
 
-function echoCmd(message) {
+function echoCmd(query) {
     var answer = {
 	result: message.cmd
     };
-    sendSuccess(answer);
+    sendSuccess(query, answer);
 }
 
 function createTab(args) {
@@ -96,11 +138,10 @@ function createTab(args) {
 	});
     }
     else {
-	if (args.window_id == '') {
+	if (args.window_id == '')
 	    chrome.windows.getLastFocused(function(window) {
 		args.window_id = window.id;
 	    });
-	}
 	for (i in args.urls) {
 	    chrome.tabs.create({
 		windowId: args.window_id,
@@ -109,28 +150,63 @@ function createTab(args) {
 	    });
 	}
     }
-    sendSuccess(args);
+    sendSuccess(query, args);
 }
 
+function fields_filter(tab, query) {
+    var result = {};
+    if (query.show.includes('t') || query.list)
+        result.title = tab.title;
+    if (query.show.includes('u') || query.list)
+        result.url = tab.url;
+    if (query.show.includes('i') || query.list)
+        result.id = tab.id;
+    if (query.show.includes('n') || query.list)
+        result.index = tab.index;
+    if (query.show.includes('w') || query.list)
+        result.windowId = tab.windowId;
+    if (query.show.includes('d') || query.list)
+        result.disabled = tab.discarded;
+    if (query.show.includes('p') || query.list)
+        result.pinned = tab.pinned;
+    if (query.show.includes('s') || query.list)
+        result.status = tab.status;
+    if (query.show.includes('a') || query.list) {
+        if (tab.mutedInfo.muted) 
+            result.audible = false;
+        else
+            result.audible = tab.audible;
+    }
+    return result;
+}
 
-function ls() {
-    let winget = new Promise((resolve, reject) => {
-	chrome.windows.getAll({populate:true}, function(winData) {
+function query_filter(tab_field, query_field) {
+    if ((query_field === tab_field) || (!tab_field))
+	return true;
+    else 
+	return false;
+}
+
+function ls(query) {
+    let get_windows = new Promise((resolve, reject) => {
+	chrome.windows.getAll({populate:true}, function(windows) {
 	    var tabs = [];
-	    for (var i in winData) {
-		var winTabs = winData[i].tabs;
-		for (var j=0; j<winTabs.length; j++) {
-		    var out = winTabs[j].title + "\t" + winTabs[j].url + "";
-		    tabs.push(out);
-		}
+	    for (var i in windows) {
+	        var win_tabs = windows[i].tabs;
+	        for (var j=0; j<win_tabs.length; j++) {
+		    var tab = win_tabs[j]
+		    if (query_filter(tab.incognito, query.incognito)) {
+			tab_is_settings = tab.url.split('/')[0].includes('chrome');
+			if (query_filter(tab_is_settings, query.settings))
+			    tabs.push(fields_filter(tab, query));
+		    }
+	        }
 	    }
 	    resolve(tabs);
 	});
     });
-    winget.then((tabs) => {
-	sendSuccess({
-	    result: tabs.join('\n'),
-	});
+    get_windows.then((tabs) => {
+	sendSuccess(query, tabs);
     });
 }
 

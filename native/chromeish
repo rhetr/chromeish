@@ -35,6 +35,9 @@ def setup_socket():
         sys.exit()
     return client, path
 
+def return_ls():
+    pass
+
 def sysargs_json():
     main_parser = ArgumentParser(
             formatter_class=SortingHelpFormatter,
@@ -67,7 +70,7 @@ def sysargs_json():
     ls.add_argument('--show', default='tuin', choices=list('tuinwdpasl'), help="fields: [t]itle, [u]rl, [i]d, i[n]dex, [w]indow id, [d]isabled, [p]inned, [a]udible, [s]tatus")
     ls.add_argument('-l', '--list', action='store_const', const=True, default=False, help="show all fields")
     ls.add_argument('-s', '--settings', action='store_const', const=True, default=False, help="include settings pages")
-    ls.add_argument('-i', '--incognito', action='store_const', const=True, default=False, help="include incognito pages")
+    ls.add_argument('-i', '--incognito', action='store_const', const=True, default=False, help="include incognito pages (extension must first be allowed in incognito)")
     new.add_argument('urls', nargs='*', help="url(s) to open")
     new.add_argument('--incognito', '-i', action='store_const', const=True, default=False, help="open in incognito mode")
 
@@ -101,15 +104,18 @@ def main():
 
     json_result = client.recvfrom(4096)[0].decode()
     result = json.loads(json_result)
-    if result['status'] == OK:
-        if 'result' in result:
-            print(result['result'])
-        else:
-            print('done')
-    elif result['status'] == ERR:
-        print("Err: {}".format(result), file=sys.stderr)
-    else:
-        print("oops, something happened", file=sys.stderr)
+    #TODO: command-specific results
+    import pprint
+    pprint.pprint(result)
+    # if result['status'] == OK:
+    #     if 'result' in result:
+    #         print(result['result'])
+    #     else:
+    #         print('done')
+    # elif result['status'] == ERR:
+    #     print("Err: {}".format(result), file=sys.stderr)
+    # else:
+    #     print("oops, something happened", file=sys.stderr)
 
     client.close()
     os.remove(path)
